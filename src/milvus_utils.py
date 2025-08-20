@@ -6,19 +6,38 @@ from pymilvus import (
 )
 from .settings import SETTINGS
 
+from pymilvus import connections, db
+
 def connect() -> None:
     if connections.has_connection("default"):
         return
-    secure = str(SETTINGS.milvus_uri).startswith("https")
-    connections.connect(
+
+    kwargs = dict(
         alias="default",
         uri=SETTINGS.milvus_uri,
-        user=(SETTINGS.milvus_user or None),
-        password=(SETTINGS.milvus_password or None),
-        db_name=(SETTINGS.milvus_db or "default"),
-        secure=secure,
+        db_name=SETTINGS.milvus_db,
         timeout=30,
     )
+
+    # HTTPS em Serverless
+    if str(SETTINGS.milvus_uri).startswith("https"):
+        kwargs["secure"] = True
+
+    # Preferir TOKEN (Serverless). Se não houver, usa user/senha.
+    if SETTINGS.milvus_token:
+        kwargs["token"] = SETTINGS.milvus_token
+    else:
+        if SETTINGS.milvus_user:
+            kwargs["user"] = SETTINGS.milvus_user
+        if SETTINGS.milvus_password:
+            kwargs["password"] = SETTINGS.milvus_password
+
+    connections.connect(**kwargs)
+    try:
+        db.create_database(SETTINGS.milvus_db)
+    except Exception:
+        pass  # já existe
+
 
 def get_or_create_collection(name: str, dim: int) -> Collection:
     connect()
