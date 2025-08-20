@@ -1,5 +1,4 @@
 import os
-import io
 import streamlit as st
 from dotenv import load_dotenv
 from typing import List, Tuple
@@ -27,7 +26,7 @@ st.sidebar.header("Configuração")
 mode = st.sidebar.radio("Backend", ["Nuvem", "Local"], index=(0 if st.session_state.mode=="Nuvem" else 1))
 st.session_state.mode = mode
 
-# Embeddings backend
+# Embeddings/LLM backend
 if mode == "Nuvem":
     emb = EmbeddingsCloud()
     llm = LLMCloud()
@@ -42,10 +41,10 @@ st.sidebar.subheader("Filtros por metadados")
 tipo_lic = st.sidebar.selectbox("Tipo de Licença", ["RLO", "LP", "LI", "LO", "OUTROS"], index=0)
 tipo_emp = st.sidebar.selectbox("Tipo de Empreendimento", ["POÇO", "ESTAÇÃO", "OLEODUTO", "BASE", "OUTROS"], index=0)
 
-# Expressão Milvus pronta para uso
+# Expressão Milvus
 expr = f' tipo_licenca == "{tipo_lic}" && tipo_empreendimento == "{tipo_emp}" '
 
-# ===== Ações úteis =====
+# ===== Ações =====
 st.sidebar.subheader("Ações")
 if st.sidebar.button("🧹 Limpar histórico"):
     st.session_state.history = []
@@ -63,7 +62,7 @@ if st.sidebar.button("📄 Exportar chat em PDF"):
 
 st.sidebar.divider()
 
-# ===== Ingestão de PDFs =====
+# ===== Ingestão =====
 st.subheader("📥 Ingestão RAG — PDFs Institucionais")
 files = st.file_uploader("Envie 1 ou mais PDFs (manuais/modelos/processos)", type=["pdf"], accept_multiple_files=True)
 col_a, col_b = st.columns([1,1])
@@ -103,8 +102,16 @@ if user_q:
         ctx = [h["text"] for h in hits]
         answer = llm.answer(user_q, ctx)
 
-        refs = "\n".join([f"• {h['fonte']} (p.{h['pagina']}) — {h['tipo_licenca']}/{h['tipo_empreendimento']}" for h in hits])
-        if hits:
-            final_answer = answer + ("\n\n**Fontes consultadas:**\n" + refs)
-        else:
-            final_answer = answer
+        refs = "\n".join([
+    f"• {h['fonte']} (p.{h['pagina']}) — {h['tipo_licenca']}/{h['tipo_empreendimento']}"
+    for h in hits
+])
+
+if hits:
+    final_answer = f"{answer}\n\n**Fontes consultadas:**\n{refs}"
+else:
+    final_answer = answer
+
+with st.chat_message("assistant"):
+    st.markdown(final_answer)
+st.session_state.history.append(("assistant", final_answer))

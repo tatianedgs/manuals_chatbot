@@ -13,14 +13,17 @@ from .settings import SETTINGS
 
 def connect() -> None:
     if not connections.has_connection("default"):
+        secure = str(SETTINGS.milvus_uri).startswith("https")
         connections.connect(
             alias="default",
             uri=SETTINGS.milvus_uri,
             user=SETTINGS.milvus_user or None,
             password=SETTINGS.milvus_password or None,
+            secure=secure,
+            timeout=30,
         )
 
-    # garante DB
+    # garante DB (Milvus 2.4+)
     try:
         db.create_database(SETTINGS.milvus_db)
     except Exception:
@@ -32,6 +35,7 @@ def get_or_create_collection(name: str, dim: int) -> Collection:
     connect()
     if utility.has_collection(name):
         col = Collection(name)
+        col.load()
         return col
 
     fields = [
@@ -46,7 +50,7 @@ def get_or_create_collection(name: str, dim: int) -> Collection:
     schema = CollectionSchema(fields=fields, description="Docs NUPETR")
     col = Collection(name=name, schema=schema)
 
-    # índice e parâmetros de busca (cosine)
+    # índice e parâmetros de busca (cosine via produto interno com vetores normalizados)
     col.create_index(
         field_name="embedding",
         index_params={"index_type": "IVF_FLAT", "metric_type": "IP", "params": {"nlist": 1024}},
