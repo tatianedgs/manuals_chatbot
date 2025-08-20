@@ -6,85 +6,59 @@ from sentence_transformers import SentenceTransformer
 from openai import OpenAI
 from .settings import SETTINGS
 
-# ===== Embeddings backends =====
+# ========== Embeddings ==========
 
 @dataclass
 class EmbeddingsCloud:
     model: str = "text-embedding-3-large"
-    api_key: str = ""
     def __post_init__(self):
-        self.client = OpenAI(api_key=self.api_key)
+        self.client = OpenAI(api_key=SETTINGS.openai_api_key)
     def encode(self, texts: List[str]) -> np.ndarray:
         resp = self.client.embeddings.create(model=self.model, input=texts)
         vecs = [d.embedding for d in resp.data]
-        arr = np.array(vecs, dtype=np.float32)
-        norms = np.linalg.norm(arr, axis=1, keepdims=True) + 1e-12
-        return arr / norms
+        return np.asarray(vecs, dtype="float32")
 
 @dataclass
 class EmbeddingsLocal:
-    model_name: str = "all-MiniLM-L6-v2"
+    model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
     def __post_init__(self):
-        self.model = SentenceTransformer(self.model_name)
+        # força CPU e evita meta tensors do PyTorch
+        self.model = SentenceTransformer(self.model_name, device="cpu")
     def encode(self, texts: List[str]) -> np.ndarray:
-        vecs = self.model.encode(texts, normalize_embeddings=True, convert_to_numpy=True)
-        return vecs.astype("float32")
+        arr = self.model.encode(texts, convert_to_numpy=True, normalize_embeddings=True, show_progress_bar=False)
+        return np.asarray(arr, dtype="float32")
 
-# ===== LLM backends =====
+# ========== LLMs ==========
 
 @dataclass
 class LLMCloud:
-    model: str = "gpt-5"
-    api_key: str = ""
-
+    model: str = "gpt-4o-mini"  # troque se quiser outro id disponível na sua conta
     def __post_init__(self):
-        self.client = OpenAI(api_key=self.api_key)
-
-    def answer(self, question: str, context_blocks: List[str]) -> str:
-        SYSTEM_PROMPT = (
+        self.client = OpenAI(api_key=SETTINGS.openai_api_key)
+    def answer(self, question: str, context: List[dict]) -> str:
+        ctx = "\n\n".join(f"- {c['text']}" for c in context)
+        prompt = (
             "Você é um assistente para analistas do NUPETR/IDEMA-RN.\n"
-            "Responda baseado no contexto (manuais internos). Indique os trechos utilizados.\n"
-            "Se não houver base no material, diga claramente."
+            "Responda apenas com base no contexto abaixo. Se faltar base, explique o que falta.\n\n"
+            f"Pergunta: {question}\n\nContexto:\n{ctx}"
         )
-
-        context_str = "\n\n".join([f"[Trecho {i+1}]\n{c}" for i, c in enumerate(context_blocks)])
-        
-        user_input = f"Pergunta:\n{question}\n\nContexto:\n{context_str}"
-        
-        try:
-            resp = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_input},
-                ],
-            )
-            return resp.choices[0].message.content
-        except Exception as e:
-            return f"[LLM Cloud indisponível] {e}"
+        r = self.client.responses.create(model=self.model, input=prompt)
+        return r.output_text
 
 @dataclass
 class LLMLocal:
-    model: str = SETTINGS.ollama_model
-    host: str = SETTINGS.ollama_host
-
-    def answer(self, question: str, context_blocks: List[str]) -> str:
-        url = f"{self.host}/api/generate"
-        
-        context_str = "\n\n".join([f"[Trecho {i+1}]\n{c}" for i, c in enumerate(context_blocks)])
-        
+    model: str | None = None  # usa SETTINGS.ollama_model se None
+    def answer(self, question: str, context: List[dict]) -> str:
+        model = self.model or SETTINGS.ollama_model
+        url = f"{SETTINGS.ollama_host}/api/generate"
+        ctx = "\n\n".join(f"- {c['text']}" for c in context)
         prompt = (
             "Você é um assistente para analistas do NUPETR/IDEMA-RN.\n"
-            "Responda com base APENAS no contexto. Se faltar base, diga.\n\n"
-            f"Pergunta: {question}\n\nContexto:\n{context_str}"
+            "Responda apenas com base no contexto abaixo. Se faltar base, explique o que falta.\n\n"
+            f"Pergunta: {question}\n\nContexto:\n{ctx}"
         )
-
-        data = {"model": self.model, "prompt": prompt, "stream": False}
-        
         try:
-            r = requests.post(url, json=data, timeout=120)
-            r.raise_for_status()
-            j = r.json()
+            j = requests.post(url, json={"model": model, "prompt": prompt, "stream": False}, timeout=120).json()
             return j.get("response", "(sem resposta do modelo local)")
         except Exception as e:
             return f"[LLM local indisponível] {e}"
