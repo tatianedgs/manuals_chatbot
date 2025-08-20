@@ -102,16 +102,16 @@ if user_q:
         ctx = [h["text"] for h in hits]
         answer = llm.answer(user_q, ctx)
 
-        refs = "\n".join([
-    f"• {h['fonte']} (p.{h['pagina']}) — {h['tipo_licenca']}/{h['tipo_empreendimento']}"
-    for h in hits
-])
+    refs = "\n".join([
+        f"• {h['fonte']} (p.{h['pagina']}) — {h['tipo_licenca']}/{h['tipo_empreendimento']}"
+        for h in hits
+    ])
 
-if hits:
-    final_answer = f"{answer}\n\n**Fontes consultadas:**\n{refs}"
-else:
-    final_answer = answer
+    if hits:
+        final_answer = f"{answer}\n\n**Fontes consultadas:**\n{refs}"
+    else:
+        final_answer = answer
 
-with st.chat_message("assistant"):
-    st.markdown(final_answer)
-st.session_state.history.append(("assistant", final_answer))
+    with st.chat_message("assistant"):
+        st.markdown(final_answer)
+    st.session_state.history.append(("assistant", final_answer))
