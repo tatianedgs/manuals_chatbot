@@ -1,4 +1,5 @@
-from typing import Iterable, List, Dict, Tuple
+# src/rag.py
+from typing import Iterable, List, Dict
 import numpy as np
 from .milvus_utils import get_or_create_collection, insert_records, search
 from .pdf_utils import extract_text_pages, chunk_text
@@ -8,31 +9,39 @@ def build_embeddings(encoder, texts: List[str]) -> np.ndarray:
 
 def ingest_pdfs(
     encoder,
-    files: Iterable[Tuple[str, bytes]],
+    files: Iterable[tuple[str, bytes]],
     tipo_licenca: str,
     tipo_empreendimento: str,
     collection_name: str,
 ) -> int:
+    """Quebra PDFs em trechos, gera embeddings e grava no Milvus."""
     col = get_or_create_collection(collection_name, dim=encoder.encode(["test"]).shape[1])
-    to_insert: List[Dict] = []
+    registros: List[Dict] = []
+    n_chunks = 0
+
     for fname, fbytes in files:
-        pages = extract_text_pages(fbytes)
-        for page_num, page_text in pages:
-            for chunk in chunk_text(page_text, chunk_size=800, overlap=120):
-                to_insert.append({
-                    "text": chunk,
-                    "fonte": fname,
-                    "pagina": page_num,
+        # 'fonte' (como aparece nas citações)
+        fonte = f"{tipo_licenca}_{tipo_empreendimento}_{fname}"
+
+        # AGORA passamos 'fonte' para a função de extração
+        for texto_pagina, pagina, _fonte in extract_text_pages(fbytes, fonte=fonte):
+            # divide em pedaços para caber no embedding/consulta
+            for trecho in chunk_text(texto_pagina):
+                emb = encoder.encode([trecho])[0].tolist()
+                registros.append({
+                    "embedding": emb,
+                    "text": trecho,
+                    "fonte": fonte,
+                    "pagina": int(pagina),
                     "tipo_licenca": tipo_licenca,
                     "tipo_empreendimento": tipo_empreendimento,
                 })
-    if not to_insert:
-        return 0
-    embs = build_embeddings(encoder, [r["text"] for r in to_insert])
-    for i, r in enumerate(to_insert):
-        r["embedding"] = embs[i].tolist()
-    insert_records(col, to_insert)
-    return len(to_insert)
+                n_chunks += 1
+
+    if registros:
+        insert_records(col, registros)
+
+    return n_chunks
 
 def retrieve_top_k(encoder, query: str, collection_name: str, top_k: int = 5, expr: str | None = None):
     col = get_or_create_collection(collection_name, dim=encoder.encode(["test"]).shape[1])
