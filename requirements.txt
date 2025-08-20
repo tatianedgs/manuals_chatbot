@@ -1,0 +1,9 @@
+streamlit>=1.35
+pymilvus>=2.4.6
+pypdf>=4.2.0
+numpy>=1.26
+python-dotenv>=1.0
+reportlab>=4.2
+openai>=1.40.0 # para modo Nuvem
+sentence-transformers>=2.7.0 # para modo Local (embeddings)
+requests>=2.32 # para falar com Ollama (LLM local opcional)
