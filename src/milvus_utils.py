@@ -1,69 +1,56 @@
-from typing import List, Dict, Any
-from pymilvus import connections, db, FieldSchema, CollectionSchema, DataType, Collection, utility
+# src/milvus_utils.py
+from typing import List
+from pymilvus import (
+    connections, utility, Collection, CollectionSchema,
+    FieldSchema, DataType
+)
 from .settings import SETTINGS
 
 def connect() -> None:
-    """Conecta ao Milvus/Zilliz usando token (ou user/senha)."""
     if connections.has_connection("default"):
         return
-
-    kwargs = dict(
+    secure = str(SETTINGS.milvus_uri).startswith("https")
+    connections.connect(
         alias="default",
         uri=SETTINGS.milvus_uri,
-        db_name=SETTINGS.milvus_db,
+        user=(SETTINGS.milvus_user or None),
+        password=(SETTINGS.milvus_password or None),
+        db_name=(SETTINGS.milvus_db or "default"),
+        secure=secure,
         timeout=30,
     )
 
-    # HTTPS no Zilliz Cloud
-    if str(SETTINGS.milvus_uri).startswith("https"):
-        kwargs["secure"] = True
-
-    # Preferir TOKEN (Zilliz). Se não houver, tentar user/senha.
-    if SETTINGS.milvus_token:
-        kwargs["token"] = SETTINGS.milvus_token
-    else:
-        if SETTINGS.milvus_user:
-            kwargs["user"] = SETTINGS.milvus_user
-        if SETTINGS.milvus_password:
-            kwargs["password"] = SETTINGS.milvus_password
-
-    connections.connect(**kwargs)
-
-    # Cria o DB se não existir (ignora erro se já existe)
-    try:
-        db.create_database(SETTINGS.milvus_db)
-    except Exception:
-        pass
-
 def get_or_create_collection(name: str, dim: int) -> Collection:
     connect()
-    if not utility.has_collection(name):
-        fields = [
-            FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=dim),
-            FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=2048),
-            FieldSchema(name="fonte", dtype=DataType.VARCHAR, max_length=256),
-            FieldSchema(name="pagina", dtype=DataType.INT64),
-            FieldSchema(name="tipo_licenca", dtype=DataType.VARCHAR, max_length=64),
-            FieldSchema(name="tipo_empreendimento", dtype=DataType.VARCHAR, max_length=64),
-        ]
-        schema = CollectionSchema(fields, description="docs NUPETR")
-        col = Collection(name=name, schema=schema)
-        col.create_index("embedding", {"index_type": "IVF_FLAT", "metric_type": "IP", "params": {"nlist": 1024}})
-    else:
+    if utility.has_collection(name):
         col = Collection(name)
+        col.load()
+        return col
+
+    fields = [
+        FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
+        FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=dim),
+        FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=16384),
+        FieldSchema(name="fonte", dtype=DataType.VARCHAR, max_length=512),
+        FieldSchema(name="pagina", dtype=DataType.INT64),
+        FieldSchema(name="tipo_licenca", dtype=DataType.VARCHAR, max_length=64),
+        FieldSchema(name="tipo_empreendimento", dtype=DataType.VARCHAR, max_length=64),
+    ]
+    schema = CollectionSchema(fields, description="Docs NUPETR")
+    col = Collection(name, schema)
+
+    index_params = {"index_type": "IVF_FLAT", "metric_type": "IP", "params": {"nlist": 1024}}
+    col.create_index(field_name="embedding", index_params=index_params)
+    col.load()
     return col
 
-def insert_records(col: Collection, records: List[Dict[str, Any]]):
-    embeddings = [r["embedding"] for r in records]
-    texts = [r["text"] for r in records]
-    fontes = [r["fonte"] for r in records]
-    paginas = [int(r["pagina"]) for r in records]
-    tipos_l = [r.get("tipo_licenca", "") for r in records]
-    tipos_e = [r.get("tipo_empreendimento", "") for r in records]
+def insert_records(col: Collection, embeddings, texts: List[str], fontes: List[str],
+                   paginas: List[int], tipos_l: List[str], tipos_e: List[str]) -> None:
+    # ordem segue o schema (id é auto)
     col.insert([embeddings, texts, fontes, paginas, tipos_l, tipos_e])
     col.flush()
 
-def search(col: Collection, query_vec, top_k=5, expr: str | None = None):
+def search(col: Collection, query_vec, top_k: int = 5, expr: str | None = None):
     params = {"metric_type": "IP", "params": {"nprobe": 32}}
     res = col.search(
         data=[query_vec],
@@ -75,7 +62,7 @@ def search(col: Collection, query_vec, top_k=5, expr: str | None = None):
     )
     return res[0] if res else []
 
-def drop_collection(name: str):
+def drop_collection(name: str) -> None:
     connect()
     if utility.has_collection(name):
         utility.drop_collection(name)
