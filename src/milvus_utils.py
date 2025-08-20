@@ -3,28 +3,37 @@ from pymilvus import connections, db, FieldSchema, CollectionSchema, DataType, C
 from .settings import SETTINGS
 
 def connect() -> None:
-    if not connections.has_connection("default"):
-        kwargs = dict(
-            alias="default",
-            uri=SETTINGS.milvus_uri,
-            db_name=SETTINGS.milvus_db,
-            timeout=30,
-        )
-        if str(SETTINGS.milvus_uri).startswith("https"):
-            kwargs["secure"] = True
-        if SETTINGS.milvus_token:  # Zilliz Cloud
-            kwargs["token"] = SETTINGS.milvus_token
-        else:
-            if SETTINGS.milvus_user:
-                kwargs["user"] = SETTINGS.milvus_user
-            if SETTINGS.milvus_password:
-                kwargs["password"] = SETTINGS.milvus_password
+    """Conecta ao Milvus/Zilliz usando token (ou user/senha)."""
+    if connections.has_connection("default"):
+        return
 
-        connections.connect(**kwargs)
-        try:
-            db.create_database(SETTINGS.milvus_db)
-        except Exception:
-            pass  # já existe
+    kwargs = dict(
+        alias="default",
+        uri=SETTINGS.milvus_uri,
+        db_name=SETTINGS.milvus_db,
+        timeout=30,
+    )
+
+    # HTTPS no Zilliz Cloud
+    if str(SETTINGS.milvus_uri).startswith("https"):
+        kwargs["secure"] = True
+
+    # Preferir TOKEN (Zilliz). Se não houver, tentar user/senha.
+    if SETTINGS.milvus_token:
+        kwargs["token"] = SETTINGS.milvus_token
+    else:
+        if SETTINGS.milvus_user:
+            kwargs["user"] = SETTINGS.milvus_user
+        if SETTINGS.milvus_password:
+            kwargs["password"] = SETTINGS.milvus_password
+
+    connections.connect(**kwargs)
+
+    # Cria o DB se não existir (ignora erro se já existe)
+    try:
+        db.create_database(SETTINGS.milvus_db)
+    except Exception:
+        pass
 
 def get_or_create_collection(name: str, dim: int) -> Collection:
     connect()
