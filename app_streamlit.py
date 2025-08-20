@@ -172,7 +172,7 @@ if st.button("📥 Indexar PDFs no Milvus", type="primary", use_container_width=
             if not key_ok:
                 st.warning("Informe uma OpenAI API key na barra lateral para usar o modo Nuvem.")
                 st.stop()
-            emb = EmbeddingsCloud()  # OpenAI embeddings
+            emb = EmbeddingsCloud(api_key=st.session_state.get("openai_key"))  # OpenAI embeddings
         else:
             if not HAS_LOCAL:
                 st.error("Modo local indisponível neste deploy.")
@@ -211,8 +211,8 @@ if user_q:
         if not key_ok:
             st.warning("Informe uma OpenAI API key na barra lateral para usar o modo Nuvem.")
             st.stop()
-        emb = EmbeddingsCloud()
-        llm = LLMCloud()
+        emb = EmbeddingsCloud(api_key=st.session_state.get("openai_key"))
+        llm = LLMCloud(api_key=st.session_state.get("openai_key"))
     else:
         if not HAS_LOCAL:
             with st.chat_message("assistant"):
