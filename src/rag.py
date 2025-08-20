@@ -1,43 +1,38 @@
-from typing import Iterable, List, Dict
+from typing import Iterable, List, Dict, Tuple
 import numpy as np
 from .milvus_utils import get_or_create_collection, insert_records, search
 from .pdf_utils import extract_text_pages, chunk_text
 
-# ===== Ingestão =====
-
 def build_embeddings(encoder, texts: List[str]) -> np.ndarray:
     return encoder.encode(texts)
 
-
-def ingest_pdfs(encoder, files: Iterable[tuple[str, bytes]], tipo_licenca: str, tipo_empreendimento: str, collection_name: str) -> int:
+def ingest_pdfs(
+    encoder,
+    files: Iterable[Tuple[str, bytes]],
+    tipo_licenca: str,
+    tipo_empreendimento: str,
+    collection_name: str,
+) -> int:
     col = get_or_create_collection(collection_name, dim=encoder.encode(["test"]).shape[1])
     to_insert: List[Dict] = []
-
     for fname, fbytes in files:
-        pages = extract_text_pages(fbytes, fonte=fname)
-        for page_text, pagina, fonte in pages:
-            for ch in chunk_text(page_text):
+        pages = extract_text_pages(fbytes)
+        for page_num, page_text in pages:
+            for chunk in chunk_text(page_text, chunk_size=800, overlap=120):
                 to_insert.append({
-                    "text": ch,
-                    "fonte": fonte,
-                    "pagina": pagina,
-                    "tipo_licenca": tipo_licenca.upper().strip(),
-                    "tipo_empreendimento": tipo_empreendimento.upper().strip(),
+                    "text": chunk,
+                    "fonte": fname,
+                    "pagina": page_num,
+                    "tipo_licenca": tipo_licenca,
+                    "tipo_empreendimento": tipo_empreendimento,
                 })
-
-    B = 128
-    total = 0
-    for i in range(0, len(to_insert), B):
-        batch = to_insert[i:i+B]
-        vecs = build_embeddings(encoder, [r["text"] for r in batch])
-        for j, v in enumerate(vecs):
-            batch[j]["embedding"] = v.tolist()
-        insert_records(col, batch)
-        total += len(batch)
-
-    return total
-
-# ===== Busca =====
+    if not to_insert:
+        return 0
+    embs = build_embeddings(encoder, [r["text"] for r in to_insert])
+    for i, r in enumerate(to_insert):
+        r["embedding"] = embs[i].tolist()
+    insert_records(col, to_insert)
+    return len(to_insert)
 
 def retrieve_top_k(encoder, query: str, collection_name: str, top_k: int = 5, expr: str | None = None):
     col = get_or_create_collection(collection_name, dim=encoder.encode(["test"]).shape[1])
