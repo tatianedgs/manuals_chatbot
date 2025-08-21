@@ -4,7 +4,6 @@ from __future__ import annotations
 # ────────────────────────────────────────────────────────────────────────────────
 # Desliga o file watcher do Streamlit no Cloud (evita "inotify instance limit")
 # ────────────────────────────────────────────────────────────────────────────────
-
 import os as _os
 _os.environ["STREAMLIT_SERVER_FILE_WATCHER_TYPE"] = "none"
 _os.environ["STREAMLIT_SERVER_HEADLESS"] = "true"
@@ -112,6 +111,7 @@ with col_t1:
             st.success("Conexão OK (HTTPS + TOKEN).")
         except Exception as e:
             st.error(f"Falha na conexão: {e}")
+            st.exception(e)
 with col_t2:
     if st.button("🗑️ Clear Collection"):
         try:
@@ -119,6 +119,7 @@ with col_t2:
             st.success(f"Coleção '{SETTINGS.milvus_collection}' removida.")
         except Exception as e:
             st.error(f"Falha ao remover: {e}")
+            st.exception(e)
 
 # 🧪 Teste rápido de escrita (isola problemas de schema/dimensão/autorização)
 st.sidebar.subheader("🧪 Teste de escrita")
@@ -144,6 +145,7 @@ if st.sidebar.button("✍️ Inserir 1 registro de teste"):
             st.sidebar.success("✅ Inserção de teste concluída!")
         except Exception as e:
             st.sidebar.error(f"❌ Falha no teste de escrita: {e}")
+            st.sidebar.exception(e)
 
 
 # ────────────────────────────────────────────────────────────────────────────────
@@ -187,10 +189,8 @@ if st.button("📌 Indexar PDFs no Milvus", disabled=disable_ing or not uploads)
                 )
             st.success(f"Indexação concluída: {n} trechos inseridos.")
         except Exception as e:
-            import traceback
             st.error(f"Falha na indexação: {e}")
-            st.exception(e)  # <-- mostra stack trace completo
-
+            st.exception(e)
 
 st.divider()
 
@@ -230,6 +230,7 @@ if question:
             final = answer
     except Exception as e:
         final = f"Falha ao buscar/gerar resposta: {e}"
+        st.exception(e)
 
     with st.chat_message("assistant"):
         st.markdown(final)
@@ -248,3 +249,4 @@ if _EXPORT_OK and st.button("🧾 Exportar conversa (PDF)"):
             st.download_button("Baixar PDF", data=f.read(), file_name=out, mime="application/pdf")
     except Exception as e:
         st.error(f"Falha ao exportar PDF: {e}")
+        st.exception(e)
