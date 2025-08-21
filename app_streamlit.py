@@ -94,6 +94,8 @@ if st.sidebar.button("🗑️ Clear Collection (Milvus)"):
 
 # (debug) mostrar o URI lido
 st.sidebar.caption(f"Milvus URI em uso: {SETTINGS.milvus_uri}")
+st.sidebar.caption("Milvus token carregado: " + ("✅" if len(SETTINGS.milvus_token) > 10 else "❌"))
+
 
 # ---------------- Ingestão ----------------
 st.subheader("📥 Ingestão RAG — PDFs Institucionais")
