@@ -187,7 +187,10 @@ if st.button("📌 Indexar PDFs no Milvus", disabled=disable_ing or not uploads)
                 )
             st.success(f"Indexação concluída: {n} trechos inseridos.")
         except Exception as e:
+            import traceback
             st.error(f"Falha na indexação: {e}")
+            st.exception(e)  # <-- mostra stack trace completo
+
 
 st.divider()
 
