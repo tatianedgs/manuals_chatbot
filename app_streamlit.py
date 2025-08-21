@@ -6,53 +6,32 @@ from typing import List, Tuple
 import streamlit as st
 from dotenv import load_dotenv
 
-# Projeto
 from src.settings import SETTINGS
 from src.milvus_utils import drop_collection
 from src.rag import ingest_pdfs, retrieve_top_k
 from src.export_pdf import export_chat_pdf
 
-# Tenta importar backends locais; se não der, desabilita "Local"
+# Backends (protege modo local no Cloud)
 try:
     from src.llm_router import EmbeddingsCloud, EmbeddingsLocal, LLMCloud, LLMLocal
     _LOCAL_OK = True
 except Exception:
-    from src.llm_router import EmbeddingsCloud, LLMCloud  # só nuvem
+    from src.llm_router import EmbeddingsCloud, LLMCloud
     EmbeddingsLocal = None  # type: ignore
     LLMLocal = None  # type: ignore
     _LOCAL_OK = False
 
-# -------------------------------------------------------
-# Bootstrap
-# -------------------------------------------------------
 load_dotenv()
-st.set_page_config(
-    page_title="NUPETR/IDEMA-RN • Chat de Parecer Técnico",
-    page_icon="💼",
-    layout="wide",
-)
+st.set_page_config(page_title="NUPETR/IDEMA-RN • Chat de Parecer Técnico", page_icon="💼", layout="wide")
 st.title("💼 NUPETR/IDEMA-RN — Chat de Parecer Técnico (RAG + Milvus)")
-st.caption(
-    "Assistente ancorado em manuais internos (PDF). "
-    "Preencha os filtros (Tipo de Licença/Empreendimento), envie PDFs e escolha o backend (Nuvem ou Local)."
-)
+st.caption("Assistente ancorado em manuais internos (PDF). Preencha os filtros, envie PDFs e escolha o backend (Nuvem ou Local).")
 
-# -------------------------------------------------------
-# Estado
-# -------------------------------------------------------
 if "history" not in st.session_state:
     st.session_state.history: List[Tuple[str, str]] = []
 
-# -------------------------------------------------------
-# Sidebar — Chaves e modo
-# -------------------------------------------------------
+# ---------------- Sidebar: chaves e modo ----------------
 st.sidebar.header("🔐 Minha chave vs Chave do app")
-
-key_mode = st.sidebar.radio(
-    "Origem da chave OpenAI",
-    ["Minha chave", "Chave do app (secrets)"],
-    index=0,
-)
+key_mode = st.sidebar.radio("Origem da chave OpenAI", ["Minha chave", "Chave do app (secrets)"], index=0)
 
 user_key = ""
 if key_mode == "Minha chave":
@@ -61,7 +40,6 @@ if key_mode == "Minha chave":
         SETTINGS.openai_api_key = user_key.strip()
         os.environ["OPENAI_API_KEY"] = SETTINGS.openai_api_key
 else:
-    # tenta pegar dos secrets
     secret_key = st.secrets.get("OPENAI_API_KEY", "")
     if secret_key:
         SETTINGS.openai_api_key = secret_key
@@ -77,12 +55,11 @@ else:
     mode = st.sidebar.radio("Escolha o modo", ["OpenAI (com chave)"], index=0)
     st.sidebar.info("Modelo Local indisponível neste ambiente.")
 
-# Instancia backends conforme o modo
 emb = None
 llm = None
 if mode == "OpenAI (com chave)":
     if not SETTINGS.openai_api_key:
-        st.sidebar.error("Informe uma OPENAI_API_KEY (na caixa acima ou em Secrets) para usar o modo OpenAI.")
+        st.sidebar.error("Informe uma OPENAI_API_KEY para usar o modo OpenAI (cole acima ou configure em Secrets).")
     else:
         emb = EmbeddingsCloud()
         llm = LLMCloud()
@@ -90,26 +67,19 @@ else:
     emb = EmbeddingsLocal()  # type: ignore
     llm = LLMLocal()  # type: ignore
 
-# -------------------------------------------------------
-# Filtros de domínio
-# -------------------------------------------------------
+# ---------------- Filtros ----------------
 st.sidebar.subheader("Filtros por metadados")
 tipo_lic = st.sidebar.selectbox("Tipo de Licença", ["RLO", "LP", "LI", "LO", "OUTROS"], index=0)
 tipo_emp = st.sidebar.selectbox("Tipo de Empreendimento", ["POÇO", "ESTAÇÃO", "OLEODUTO", "BASE", "OUTROS"], index=0)
-
-# Expressão Milvus para filtrar
 expr = f'tipo_licenca == "{tipo_lic}" && tipo_empreendimento == "{tipo_emp}"'
 
-# -------------------------------------------------------
-# PDFs + Ações
-# -------------------------------------------------------
+# ---------------- PDFs & ações ----------------
 st.sidebar.subheader("📄 PDFs")
 uploaded_files = st.sidebar.file_uploader(
     "Selecione (padrão: tipoLicenca_tipoEmpreendimento.pdf)",
     accept_multiple_files=True,
     type=["pdf"],
 )
-
 st.sidebar.subheader("Ações")
 if st.sidebar.button("🧹 Limpar histórico"):
     st.session_state.history = []
@@ -122,12 +92,10 @@ if st.sidebar.button("🗑️ Clear Collection (Milvus)"):
     except Exception as e:
         st.error(f"Falha ao remover coleção: {e}")
 
-# (debug opcional) Mostra URI atual lido dos secrets/env
+# (debug) mostrar o URI lido
 st.sidebar.caption(f"Milvus URI em uso: {SETTINGS.milvus_uri}")
 
-# -------------------------------------------------------
-# Ingestão (botão principal)
-# -------------------------------------------------------
+# ---------------- Ingestão ----------------
 st.subheader("📥 Ingestão RAG — PDFs Institucionais")
 col_i, col_hint = st.columns([1, 1])
 
@@ -156,12 +124,8 @@ with col_hint:
 
 st.divider()
 
-# -------------------------------------------------------
-# Conversa
-# -------------------------------------------------------
+# ---------------- Conversa ----------------
 st.subheader("💬 Conversa")
-
-# histórico
 for role, msg in st.session_state.history:
     with st.chat_message(role):
         st.markdown(msg)
@@ -181,9 +145,8 @@ if question:
             top_k=5,
             expr=expr,
         )
-        context_blocks = [h["text"] for h in hits]
-        answer = llm.answer(question, context_blocks)  # type: ignore
-
+        ctx = [h["text"] for h in hits]
+        answer = llm.answer(question, ctx)  # type: ignore
         if hits:
             refs = "\n".join(
                 f"• {h['fonte']} (p.{h['pagina']}) — {h['tipo_licenca']}/{h['tipo_empreendimento']}"
