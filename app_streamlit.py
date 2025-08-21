@@ -59,6 +59,8 @@ if user_key:
     os.environ["OPENAI_API_KEY"] = user_key
     SETTINGS.openai_api_key = user_key  # usada por EmbeddingsCloud/LLMCloud
 
+
+st.sidebar.caption(f"Milvus URI em uso: {SETTINGS.milvus_uri}")
 # ================== sidebar: modo do modelo ==================
 st.sidebar.subheader("🧠 Modo do modelo")
 mode = st.sidebar.radio(
