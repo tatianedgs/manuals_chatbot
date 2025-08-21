@@ -68,6 +68,10 @@ def connect() -> None:
 def _schema(dim: int) -> CollectionSchema:
     return CollectionSchema(
         fields=[
+            # >>> Primary Key (gerado automaticamente pelo servidor)
+            FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
+
+            # Demais campos
             FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=dim),
             FieldSchema(name="text", dtype=DataType.VARCHAR, max_length=16384),
             FieldSchema(name="fonte", dtype=DataType.VARCHAR, max_length=512),
@@ -78,6 +82,7 @@ def _schema(dim: int) -> CollectionSchema:
         description="Trechos de PDFs institucionais (NUPETR/IDEMA-RN)",
         enable_dynamic_field=False,
     )
+
 
 
 def get_or_create_collection(name: str, dim: int) -> Collection:
