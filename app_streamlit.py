@@ -4,6 +4,7 @@ from __future__ import annotations
 # ────────────────────────────────────────────────────────────────────────────────
 # Desliga o file watcher do Streamlit no Cloud (evita "inotify instance limit")
 # ────────────────────────────────────────────────────────────────────────────────
+
 import os as _os
 _os.environ["STREAMLIT_SERVER_FILE_WATCHER_TYPE"] = "none"
 _os.environ["STREAMLIT_SERVER_HEADLESS"] = "true"
