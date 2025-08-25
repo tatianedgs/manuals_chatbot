@@ -1,4 +1,4 @@
-# app_streamlit.py — NUPETR/IDEMA (design verde) + EXTRATIVA (sem LLM) + citações limpas
+# app_streamlit.py — NUPETR/IDEMA (design verde) + EXTRATIVA (sem LLM) + citações limpas + GATE por senha
 from __future__ import annotations
 
 # estabilidade no Streamlit Cloud
@@ -10,7 +10,7 @@ import os
 from typing import List, Tuple, Sequence, Dict
 import streamlit as st
 from dotenv import load_dotenv
-from collections import defaultdict, OrderedDict
+from collections import OrderedDict
 from pathlib import Path
 import glob
 
@@ -81,7 +81,6 @@ def format_citations(hits: Sequence[Dict]) -> str:
     Entrada: hits = [{fonte, pagina, tipo_licenca, tipo_empreendimento, ...}, ...]
     Saída: markdown com bullets, sem repetições.
     """
-    # agrupa por (fonte, licenca, empreendimento)
     groups = OrderedDict()  # mantém ordem de chegada dos hits
     for h in hits:
         key = (h.get("fonte") or "", h.get("tipo_licenca") or "", h.get("tipo_empreendimento") or "")
@@ -97,7 +96,6 @@ def format_citations(hits: Sequence[Dict]) -> str:
 
     lines = []
     for (fonte, tlic, temp), pages in groups.items():
-        # pega apenas o nome do arquivo, se houver caminho
         fname = os.path.basename(fonte) if fonte else "—"
         pages_sorted = sorted([p for p in pages if p > 0])
         if pages_sorted:
@@ -112,6 +110,23 @@ def format_citations(hits: Sequence[Dict]) -> str:
 # ---------- bootstrap ----------
 load_dotenv()
 st.set_page_config(page_title="Pareceres Técnicos — NUPETR/IDEMA-RN", page_icon="🧰", layout="wide")
+
+# ---------- GATE por senha (APP_PASSCODE nos Secrets) ----------
+REQUIRED_CODE = st.secrets.get("APP_PASSCODE", "")
+if REQUIRED_CODE:
+    if "auth_ok" not in st.session_state:
+        st.session_state.auth_ok = False
+    if not st.session_state.auth_ok:
+        st.title("🔒 Acesso restrito — NUPETR/IDEMA-RN")
+        st.caption("Informe o código de acesso fornecido pela equipe do NUPETR.")
+        code = st.text_input("Código de acesso", type="password")
+        if st.button("Entrar"):
+            if code == REQUIRED_CODE:
+                st.session_state.auth_ok = True
+                st.rerun()
+            else:
+                st.error("Código incorreto.")
+        st.stop()
 
 # ---------- CSS (paleta verde) ----------
 st.markdown("""
@@ -190,7 +205,7 @@ with st.sidebar:
         else:
             pairs = [(f.name, f.read()) for f in uploads]
 
-            # Backend: embeddings + answerer (apenas para indexar, respondedor é usado no chat)
+            # Backend: embeddings para indexar
             if mode.startswith("OpenAI"):
                 if not SETTINGS.openai_api_key:
                     st.error("Informe uma OPENAI_API_KEY ou selecione o modo 'Extrativa (sem LLM)'.")
@@ -198,7 +213,6 @@ with st.sidebar:
                 else:
                     emb = EmbeddingsCloud()
             else:  # Extrativa
-                # Preferimos embeddings da OpenAI se houver chave; senão, locais
                 emb = EmbeddingsCloud() if SETTINGS.openai_api_key else EmbeddingsLocal()
 
             if emb is not None:
@@ -275,7 +289,7 @@ if question:
         ctx = [h["text"] for h in hits]
         answer_text = answerer.answer(question, ctx)  # type: ignore
 
-        # >>> CITAÇÕES LIMPAS
+        # Citações limpas (agrupadas e sem repetições)
         refs_block = format_citations(hits)
         if refs_block:
             final = f"{answer_text}\n\n**Fontes consultadas:**\n{refs_block}"
