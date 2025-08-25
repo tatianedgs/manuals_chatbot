@@ -1,4 +1,5 @@
-# app_streamlit.py — NUPETR/IDEMA (design verde) + EXTRATIVA (sem LLM) + citações limpas + GATE por senha
+# app_streamlit.py — NUPETR/IDEMA (design verde) + EXTRATIVA (sem LLM)
+# ordem do chat corrigida + citações limpas + gate por senha + descrição do projeto
 from __future__ import annotations
 
 # estabilidade no Streamlit Cloud
@@ -29,20 +30,17 @@ except Exception:
 # ---------- helpers visuais e de formatação ----------
 def _try_show_logo():
     """Mostra a logo do IDEMA (ordem: secrets → assets/ glob → fallback texto)."""
-    # 1) secrets
     logo_hint = st.secrets.get("LOGO_PATH", "")
     candidates: List[str] = []
     if logo_hint:
         candidates.append(logo_hint)
 
-    # 2) assets/ com nome contendo 'idema'
     assets = Path("assets")
     if assets.exists():
         for ext in ("png", "jpg", "jpeg"):
             candidates.extend(glob.glob(str(assets / f"*idema*.{ext}")))
             candidates.extend(glob.glob(str(assets / f"*IDEMA*.{ext}")))
 
-    # 3) nomes comuns
     candidates.extend([
         "assets/logo_idema.png",
         "assets/logo_idema.jpg",
@@ -78,10 +76,8 @@ def collection_for(emb, base_name: str) -> str:
 def format_citations(hits: Sequence[Dict]) -> str:
     """
     Agrupa por documento e lista páginas únicas, ordenadas.
-    Entrada: hits = [{fonte, pagina, tipo_licenca, tipo_empreendimento, ...}, ...]
-    Saída: markdown com bullets, sem repetições.
     """
-    groups = OrderedDict()  # mantém ordem de chegada dos hits
+    groups = OrderedDict()
     for h in hits:
         key = (h.get("fonte") or "", h.get("tipo_licenca") or "", h.get("tipo_empreendimento") or "")
         if key not in groups:
@@ -175,19 +171,27 @@ with st.sidebar:
 
     st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
 
-    # Chave da OpenAI (opcional)
+    # Chave da OpenAI (opcional) — com explicação e quem paga
     st.markdown('<div class="sb-title">Chave da OpenAI (opcional)</div>', unsafe_allow_html=True)
-    key_value = st.text_input("Cole sua chave (sk-...)", type="password", label_visibility="collapsed")
-    use_secrets = st.checkbox("Usar a chave do app (secrets)")
+    use_secrets = st.radio("Quem vai fornecer a chave?", ["Usar a chave do app (recomendado para time)", "Usar minha própria chave"], index=0)
+    key_value = ""
 
-    if use_secrets and not key_value:
+    if "própria" in use_secrets.lower():
+        key_value = st.text_input("Cole sua chave (sk-...)", type="password", label_visibility="collapsed")
+        if key_value:
+            os.environ["OPENAI_API_KEY"] = key_value
+            SETTINGS.openai_api_key = key_value
+            st.caption("💳 **Custo**: debitado na **sua** conta OpenAI.")
+        else:
+            st.caption("Cole sua chave acima para usar modelos da OpenAI.")
+    else:
         secret_key = st.secrets.get("OPENAI_API_KEY", "")
         if secret_key:
-            key_value = secret_key
-
-    if key_value:
-        os.environ["OPENAI_API_KEY"] = key_value
-        SETTINGS.openai_api_key = key_value
+            os.environ["OPENAI_API_KEY"] = secret_key
+            SETTINGS.openai_api_key = secret_key
+            st.caption("💳 **Custo**: debitado na **chave do app** (NUPETR/IDEMA).")
+        else:
+            st.warning("Nenhuma chave do app definida em Secrets. Cole a sua acima ou peça à TI.")
 
     with st.expander("Como obter a chave?"):
         st.markdown(
@@ -208,7 +212,7 @@ with st.sidebar:
             # Backend: embeddings para indexar
             if mode.startswith("OpenAI"):
                 if not SETTINGS.openai_api_key:
-                    st.error("Informe uma OPENAI_API_KEY ou selecione o modo 'Extrativa (sem LLM)'.")
+                    st.error("Forneça uma OPENAI_API_KEY ou selecione o modo 'Extrativa (sem LLM)'.")
                     emb = None
                 else:
                     emb = EmbeddingsCloud()
@@ -248,61 +252,94 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ---------- Conversa ----------
+# ---------- Conversa (ordem corrigida) ----------
 if "history" not in st.session_state:
     st.session_state.history: List[Tuple[str, str]] = []
 
 st.subheader("Conversa")
+
+# render histórico já existente
 for role, msg in st.session_state.history:
     with st.chat_message(role):
         st.markdown(msg)
 
+# input do usuário
 question = st.chat_input("Digite sua pergunta aqui…")
-if question:
-    st.session_state.history.append(("user", question))
 
-    # Seleciona embeddings e “answerer” conforme o modo
+if question:
+    # 1) mostra a MENSAGEM DO USUÁRIO imediatamente
+    st.session_state.history.append(("user", question))
+    with st.chat_message("user"):
+        st.markdown(question)
+
+    # 2) prepara backend conforme modo
     if mode.startswith("OpenAI"):
         if not SETTINGS.openai_api_key:
             with st.chat_message("assistant"):
                 st.markdown("Defina sua **OPENAI_API_KEY** na barra lateral ou mude para **Extrativa (sem LLM)**.")
-            final = None
-        else:
-            emb = EmbeddingsCloud()
-            answerer = LLMCloud()
+            st.stop()
+        emb = EmbeddingsCloud()
+        answerer = LLMCloud()
     else:
         emb = EmbeddingsCloud() if SETTINGS.openai_api_key else EmbeddingsLocal()
         answerer = LiteLocal()
 
-    try:
-        coll_name = st.session_state.get("coll_name")
-        if not coll_name:
-            coll_name = collection_for(emb, SETTINGS.milvus_collection)
+    # 3) placeholder da resposta (mostra 'pensando...' enquanto busca)
+    with st.chat_message("assistant"):
+        placeholder = st.empty()
+        placeholder.markdown("_pensando…_")
 
-        hits = retrieve_top_k(
-            encoder=emb,  # type: ignore
-            query=question,
-            collection_name=coll_name,
-            top_k=5,
-            expr=f'tipo_licenca == "{tipo_lic or ""}" && tipo_empreendimento == "{tipo_emp or ""}"',
-        )
-        ctx = [h["text"] for h in hits]
-        answer_text = answerer.answer(question, ctx)  # type: ignore
+        try:
+            coll_name = st.session_state.get("coll_name")
+            if not coll_name:
+                coll_name = collection_for(emb, SETTINGS.milvus_collection)
 
-        # Citações limpas (agrupadas e sem repetições)
-        refs_block = format_citations(hits)
-        if refs_block:
-            final = f"{answer_text}\n\n**Fontes consultadas:**\n{refs_block}"
-        else:
-            final = answer_text
-    except Exception as e:
-        final = f"Falha ao buscar/gerar resposta: {e}"
-        st.exception(e)
+            hits = retrieve_top_k(
+                encoder=emb,  # type: ignore
+                query=question,
+                collection_name=coll_name,
+                top_k=5,
+                expr=f'tipo_licenca == "{tipo_lic or ""}" && tipo_empreendimento == "{tipo_emp or ""}"',
+            )
+            ctx = [h["text"] for h in hits]
+            answer_text = answerer.answer(question, ctx)  # type: ignore
 
-    if final is not None:
-        with st.chat_message("assistant"):
-            st.markdown(final)
-        st.session_state.history.append(("assistant", final))
+            refs_block = format_citations(hits)
+            if refs_block:
+                final = f"{answer_text}\n\n**Fontes consultadas:**\n{refs_block}"
+            else:
+                final = answer_text
+        except Exception as e:
+            final = f"Falha ao buscar/gerar resposta: {e}"
+            st.exception(e)
+
+        # 4) substitui o placeholder pela resposta final
+        placeholder.markdown(final)
+
+    # 5) salva a resposta no histórico
+    st.session_state.history.append(("assistant", final))
+
+# ---------- Sobre o projeto ----------
+st.markdown("<div class='spacer'></div>", unsafe_allow_html=True)
+st.markdown(
+    """
+<div class="card">
+  <strong>Sobre este projeto</strong><br>
+  <span style="color:#5f6b68;">
+    Assistente desenvolvido para o <strong>NUPETR — Núcleo de Atividades Petrolíferas do IDEMA/RN</strong>,
+    com o objetivo de auxiliar analistas na elaboração de pareceres técnicos e análises de estudos, a partir de
+    trechos de documentos internos (RAG com Milvus/Zilliz).
+    Primeiro módulo: <em>RLO_POÇO</em>.
+    <br><br>
+    <strong>Desenvolvimento:</strong> Sinara Carla e equipe (NUPETR/IDEMA-RN).<br>
+    <strong>Tecnologias:</strong> Streamlit, Python, pypdf, Milvus/Zilliz, embeddings OpenAI (ou locais) e modo extrativo sem LLM.
+    <br>
+    As respostas são ancoradas nos trechos indexados e exibem <em>Fontes consultadas</em>.
+  </span>
+</div>
+""",
+    unsafe_allow_html=True,
+)
 
 # ---------- Exportar ----------
 if _EXPORT_OK:
