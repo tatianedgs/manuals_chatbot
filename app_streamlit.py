@@ -173,7 +173,7 @@ with st.sidebar:
 
     # Chave da OpenAI (opcional) — com explicação e quem paga
     st.markdown('<div class="sb-title">Chave da OpenAI (opcional)</div>', unsafe_allow_html=True)
-    use_secrets = st.radio("Quem vai fornecer a chave?", ["Usar a chave do app (recomendado para time)", "Usar minha própria chave"], index=0)
+    use_secrets = st.radio("Quem vai fornecer a chave?", ["Usar a chave do app (usuário Tatiane)", "Usar minha própria chave"], index=0)
     key_value = ""
 
     if "própria" in use_secrets.lower():
@@ -189,7 +189,7 @@ with st.sidebar:
         if secret_key:
             os.environ["OPENAI_API_KEY"] = secret_key
             SETTINGS.openai_api_key = secret_key
-            st.caption("💳 **Custo**: debitado na **chave do app** (NUPETR/IDEMA).")
+            st.caption("💳 **Custo**: Usar a **chave do app** gera um custo (usuário Tatiane).")
         else:
             st.warning("Nenhuma chave do app definida em Secrets. Cole a sua acima ou peça à TI.")
 
@@ -331,7 +331,7 @@ st.markdown(
     trechos de documentos internos (RAG com Milvus/Zilliz).
     Primeiro módulo: <em>RLO_POÇO</em>.
     <br><br>
-    <strong>Desenvolvimento:</strong> Sinara Carla e equipe (NUPETR/IDEMA-RN).<br>
+    <strong>Desenvolvimento:</strong> Tatiane Gois e Sinara Carla (NUPETR/IDEMA-RN).<br>
     <strong>Tecnologias:</strong> Streamlit, Python, pypdf, Milvus/Zilliz, embeddings OpenAI (ou locais) e modo extrativo sem LLM.
     <br>
     As respostas são ancoradas nos trechos indexados e exibem <em>Fontes consultadas</em>.
