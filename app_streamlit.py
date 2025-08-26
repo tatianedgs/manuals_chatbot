@@ -1,5 +1,5 @@
 # app_streamlit.py — NUPETR/IDEMA (design verde) + EXTRATIVA (sem LLM)
-# ordem do chat corrigida + citações limpas + gate por senha + descrição do projeto
+# ordem do chat corrigida + citações limpas + gate por senha + descrição do projeto (no sidebar)
 from __future__ import annotations
 
 # estabilidade no Streamlit Cloud
@@ -241,6 +241,21 @@ with st.sidebar:
         st.session_state.history = []
         st.success("Histórico limpo.")
 
+    # ---- Sobre o projeto (AGORA NO SIDEBAR) ----
+    st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
+    with st.expander("ℹ️ Sobre este projeto"):
+        st.markdown(
+            """
+**NUPETR — Núcleo de Atividades Petrolíferas do IDEMA/RN**  
+Assistente para apoiar analistas na elaboração de **pareceres técnicos** e **análises de estudos**, a partir de trechos dos documentos internos (RAG com Milvus/Zilliz).  
+**Primeiro módulo:** *RLO_POÇO*.
+
+**Desenvolvimento:** Tatiane Gois e **Sinara Carla** (NUPETR/IDEMA-RN).  
+**Tecnologias:** Streamlit, Python, pypdf, Milvus/Zilliz, embeddings OpenAI (ou locais) e **modo extrativo** sem LLM.  
+As respostas são **ancoradas** nos trechos indexados e exibem *Fontes consultadas*.
+            """
+        )
+
 # ---------- Header ----------
 st.markdown("""
 <div class="header">
@@ -318,28 +333,6 @@ if question:
 
     # 5) salva a resposta no histórico
     st.session_state.history.append(("assistant", final))
-
-# ---------- Sobre o projeto ----------
-st.markdown("<div class='spacer'></div>", unsafe_allow_html=True)
-st.markdown(
-    """
-<div class="card">
-  <strong>Sobre este projeto</strong><br>
-  <span style="color:#5f6b68;">
-    Assistente desenvolvido para o <strong>NUPETR — Núcleo de Atividades Petrolíferas do IDEMA/RN</strong>,
-    com o objetivo de auxiliar analistas na elaboração de pareceres técnicos e análises de estudos, a partir de
-    trechos de documentos internos (RAG com Milvus/Zilliz).
-    Primeiro módulo: <em>RLO_POÇO</em>.
-    <br><br>
-    <strong>Desenvolvimento:</strong> Tatiane Gois e Sinara Carla (NUPETR/IDEMA-RN).<br>
-    <strong>Tecnologias:</strong> Streamlit, Python, pypdf, Milvus/Zilliz, embeddings OpenAI (ou locais) e modo extrativo sem LLM.
-    <br>
-    As respostas são ancoradas nos trechos indexados e exibem <em>Fontes consultadas</em>.
-  </span>
-</div>
-""",
-    unsafe_allow_html=True,
-)
 
 # ---------- Exportar ----------
 if _EXPORT_OK:
